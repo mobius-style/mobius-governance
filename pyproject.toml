@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mobius-governance"
+version = "0.1.0"
+description = "MMV (answer-entitlement) + RCGov (context governance) as a model-independent layer + OpenAI-compatible proxy — no RQA on the interactive path"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "AGPL-3.0-or-later" }
+authors = [{ name = "Taiko Toeda", email = "toeda.t@gmail.com" }]
+keywords = [
+  "llm", "governance", "guardrails", "answer-entitlement", "context-governance",
+  "rag", "prompt-injection", "openai-compatible", "local-first", "mobius",
+]
+classifiers = [
+  "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+  "Programming Language :: Python :: 3",
+  "Development Status :: 3 - Alpha",
+]
+
+# The core (routing + injection guard + prompt composition + OpenAI-compatible
+# backend client) is pure stdlib. Context governance needs RCGov; serving the HTTP
+# API needs the `serve` extra.
+dependencies = []
+
+[project.optional-dependencies]
+govern = ["rcgov @ git+https://github.com/mobius-style/rcgov.git"]
+serve = ["fastapi>=0.110", "uvicorn>=0.29"]
+
+[project.scripts]
+mobius-governance = "mobius_governance.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
