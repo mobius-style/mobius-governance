@@ -7,3 +7,11 @@ authors:
 version: 0.1.0
 license: AGPL-3.0-or-later
 repository-code: "https://github.com/mobius-style/mobius-governance"
+references:
+  - type: article
+    title: "Governance Before Generation: An empirical N=100 A/B measurement of answer-entitlement and context governance on Gemma 4 12B"
+    authors:
+      - family-names: Toeda
+        given-names: Taiko
+    doi: "10.5281/zenodo.21357562"
+    year: 2026

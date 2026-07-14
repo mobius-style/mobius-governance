@@ -86,6 +86,11 @@ Verified live end-to-end against **Gemma 4 12B via Ollama**: a buried
 `ignore all previous instructions…` and an `AWS_SECRET_ACCESS_KEY` are filtered out,
 and the answer stays grounded on the clean context.
 
+A larger head-to-head — naive RAG vs. this layer on the same Gemma 4 12B, N=100 per
+condition — is reported in the companion paper: prompt-injection compliance and
+credential leakage both fall **57% → 0%** at **~1.3 ms** added latency. *Governance
+Before Generation*, Zenodo, DOI [10.5281/zenodo.21357562](https://doi.org/10.5281/zenodo.21357562).
+
 ## Honest limitations
 
 - **Injection defense is hygiene, not a security boundary.** The guard is a regex over
@@ -103,6 +108,7 @@ and the answer stays grounded on the clean context.
 - [infinity](https://github.com/mobius-style/infinity) — MMV **× RQA** composite (adds the reflective-questioning tier this repo omits)
 - [rcgov](https://github.com/mobius-style/rcgov) — the context governor · [paper (Zenodo 10.5281/zenodo.21231386)](https://doi.org/10.5281/zenodo.21231386)
 - **Transformers-local instantiation**: [`moebiusT7/gemma-4-12b-mobius-custom`](https://huggingface.co/moebiusT7/gemma-4-12b-mobius-custom) — Gemma 4 12B (NF4) with this exact governance layer baked in as `trust_remote_code`.
+- **Companion paper** — *Governance Before Generation*, Zenodo, DOI [10.5281/zenodo.21357562](https://doi.org/10.5281/zenodo.21357562): the N=100 A/B behind the numbers above.
 
 ## License
 
