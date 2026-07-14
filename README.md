@@ -106,5 +106,4 @@ and the answer stays grounded on the clean context.
 
 ## License
 
-**AGPL-3.0-or-later**, © MOBIUS.LLC / Taiko Toeda. The MMV and RCGov methods are
-patent-pending.
+**AGPL-3.0-or-later**, © MOBIUS.LLC / Taiko Toeda.

@@ -6,5 +6,3 @@ Licensed under the GNU Affero General Public License v3.0 or later (AGPL-3.0-or-
 Composes two Mobius components (installed separately, their own licenses apply):
   - MMV / MOBIUS INFINITY  — answer-entitlement routing   https://github.com/mobius-style/infinity
   - RCGov                  — context governance           https://github.com/mobius-style/rcgov
-
-The MMV and RCGov methods are patent-pending.
