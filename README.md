@@ -110,6 +110,13 @@ Before Generation*, Zenodo, DOI [10.5281/zenodo.21357562](https://doi.org/10.528
 - **Transformers-local instantiation**: [`moebiusT7/gemma-4-12b-mobius-custom`](https://huggingface.co/moebiusT7/gemma-4-12b-mobius-custom) — Gemma 4 12B (NF4) with this exact governance layer baked in as `trust_remote_code`.
 - **Companion paper** — *Governance Before Generation*, Zenodo, DOI [10.5281/zenodo.21357562](https://doi.org/10.5281/zenodo.21357562): the N=100 A/B behind the numbers above.
 
+## Practical kits
+
+The operational discipline behind this project — abstain gates, kill switches,
+regression evals, rollback — is available as a practical audit kit for small
+teams: [free 25-point checklist](https://toeda.gumroad.com/l/free-checklist) ·
+[full kit + monthly safety briefing](https://toeda.gumroad.com/l/safety-briefing).
+
 ## License
 
 **AGPL-3.0-or-later**, © MOBIUS.LLC / Taiko Toeda.
