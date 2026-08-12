@@ -120,3 +120,16 @@ teams: [free 25-point checklist](https://toeda.gumroad.com/l/free-checklist) ·
 ## License
 
 **AGPL-3.0-or-later**, © MOBIUS.LLC / Taiko Toeda.
+
+### Commercial license
+
+If your organization cannot meet AGPL's source-disclosure obligations, a
+commercial license is available from MOBIUS LLC (sole rights holder):
+**USD 500 per month, per company — cancel anytime, no minimum term.**
+Annual invoicing available at USD 5,000/year.
+
+It is a license grant, not a service: no service is performed, no data of
+yours is accessed, and nothing you run depends on our availability.
+
+Contact: **info@mobius.style** — licensing questions are not handled in Issues.
+
