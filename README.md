@@ -88,6 +88,7 @@ held-out evaluation and the predeclared floors it did not meet.
 - [rcgov](https://github.com/mobius-style/rcgov) — the context governor · [paper (Zenodo 10.5281/zenodo.21231386)](https://doi.org/10.5281/zenodo.21231386)
 - **Transformers-local instantiation**: [`moebiusT7/gemma-4-12b-mobius-custom`](https://huggingface.co/moebiusT7/gemma-4-12b-mobius-custom) — Gemma 4 12B (NF4) with an earlier revision of this governance layer baked in as `trust_remote_code`.
 - **Companion paper** — *Governance Before Generation*, Zenodo, DOI [10.5281/zenodo.21357562](https://doi.org/10.5281/zenodo.21357562): an earlier N=100 A/B. It does not cover this release; see `docs/EVIDENCE_AND_LIMITATIONS.md`.
+- **Preregistration paper** — *Preregistration as an Executable Contract*, Zenodo, DOI [10.5281/zenodo.22138712](https://doi.org/10.5281/zenodo.22138712): the frozen design, endpoints, and analysis plan of the prospective paired N=800 evaluation of this assurance plane. No outcome data exist; the study is HOLD_NOT_EXECUTABLE.
 
 ## Practical kits
 

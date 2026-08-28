@@ -9,3 +9,11 @@ date-released: 2026-08-28
 license: AGPL-3.0-or-later
 repository-code: "https://github.com/mobius-style/mobius-governance"
 
+preferred-citation:
+  type: article
+  title: "Preregistration as an Executable Contract: A Machine-Enforced Protocol for a Paired N=800 Evaluation of an LLM Agent Assurance Plane"
+  authors:
+    - family-names: Toeda
+      given-names: Taiko
+  doi: 10.5281/zenodo.22138712
+  year: 2026
