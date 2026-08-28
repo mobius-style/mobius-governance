@@ -1,17 +1,11 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
-title: "mobius-governance: MMV answer-entitlement + RCGov context governance as a model-independent layer"
+title: "mobius-governance: bounded context scanning and action mediation"
 authors:
   - family-names: Toeda
     given-names: Taiko
-version: 0.1.0
+version: 0.7.0
+date-released: 2026-08-28
 license: AGPL-3.0-or-later
 repository-code: "https://github.com/mobius-style/mobius-governance"
-references:
-  - type: article
-    title: "Governance Before Generation: An empirical N=100 A/B measurement of answer-entitlement and context governance on Gemma 4 12B"
-    authors:
-      - family-names: Toeda
-        given-names: Taiko
-    doi: "10.5281/zenodo.21357562"
-    year: 2026
+

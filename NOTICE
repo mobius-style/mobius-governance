@@ -1,8 +1,10 @@
 mobius-governance
-Copyright (c) MOBIUS.LLC / Taiko Toeda
+Copyright (c) 2026 MOBIUS.LLC / Taiko Toeda
 
-Licensed under the GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later).
+Licensed under the GNU Affero General Public License v3.0 or later
+(AGPL-3.0-or-later).
 
-Composes two Mobius components (installed separately, their own licenses apply):
-  - MMV / MOBIUS INFINITY  — answer-entitlement routing   https://github.com/mobius-style/infinity
-  - RCGov                  — context governance           https://github.com/mobius-style/rcgov
+Optional RCGov integration is installed separately and remains subject to its
+own license. This snapshot contains no third-party model weights, protected
+evaluation corpus, or historical holdout data.
+

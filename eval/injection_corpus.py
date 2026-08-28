@@ -1,7 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """Adversarial corpus for the injection guard (mobius_governance.core.looks_like_injection),
 which runs as defense-in-depth over RCGov's seed detector. Measures recall on
-injections and false-positive on benign context. Run: python3 eval/injection_corpus.py"""
+injections and false-positive on benign context. Run: python3 eval/injection_corpus.py
+
+Scope note: this is a 22-case hand-written smoke corpus, not an efficacy
+measurement. For the held-out evaluation and its predeclared floors, see
+docs/EVIDENCE_AND_LIMITATIONS.md."""
 from __future__ import annotations
 import sys
 from pathlib import Path
