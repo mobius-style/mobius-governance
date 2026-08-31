@@ -19,6 +19,18 @@ instance, not to an action class.** See `SECURITY.md`.
   0.7.0 code failed (59 unit tests, up from 51).
 - Detector, policy (130 rules), and contract suite (105 cases) are unchanged.
 
+## Unreleased
+
+- Declared the mediation boundary in `docs/MEDIATION_SCOPE.md`: eleven
+  `PreToolUse` tools in scope, unrecognised tools fail closed, and the interior
+  of a `Bash` command plus effect paths that never reach the adapter are stated
+  as out of scope rather than left implicit.
+- Added `tests/test_mediation_coverage.py` (9 bypass tests, 68 total). The
+  declared set is recovered from the classifier by AST, so the document cannot
+  drift from the implementation. Calibrated against three deliberately broken
+  builds — unknown tools failing open, a removed delegation branch, and an
+  effectful tool downgraded to allow — each of which the suite detects.
+
 ## 0.7.0-alpha — 2026-08-28
 
 - Added a bounded four-pass English/Japanese structural context scanner.

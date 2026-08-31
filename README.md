@@ -75,6 +75,17 @@ Do not place historical MOBIUS/Elsa corpora or L0/TVS/MKR/KVS/muQK prompt
 material into a running adapter's system prompt. Those materials are not
 runtime inputs to this release.
 
+## What is mediated, and what is not
+
+The action gate mediates a declared set of eleven `PreToolUse` tools; anything
+outside that set fails closed. The interior of a `Bash` command is explicitly
+**not** mediated — it is gated as one opaque action, never admitted without
+approval, but the gate cannot see what the shell string will do. The full
+boundary, including the effect paths that never reach the adapter at all, is in
+[`docs/MEDIATION_SCOPE.md`](docs/MEDIATION_SCOPE.md) and is enforced by
+`tests/test_mediation_coverage.py`, which derives the declared set from the
+classifier source so prose and code cannot drift apart.
+
 ## Reproducible checks under `eval/`
 
 `eval/injection_corpus.py` and `eval/router_corpus.py` are small hand-written
