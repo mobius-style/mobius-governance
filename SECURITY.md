@@ -102,10 +102,20 @@ behavior; pin exact versions and rerun your own regression set before updating.
 
 ## Reporting a vulnerability
 
-Do not include credentials, private prompts, customer data, or live exploit
-payloads in a public issue. Use GitHub's private vulnerability reporting for
-this repository when available. If that channel is unavailable, open a public
-issue containing only a request for a private contact channel.
+Report privately through GitHub's private vulnerability reporting, which is
+enabled on this repository: open the Security tab and choose *Report a
+vulnerability*. Do not include credentials, private prompts, customer data, or
+live exploit payloads in a public issue.
+
+We publish defects in our own security machinery, including defects in our own
+fixes — MG-2026-002 is an advisory about MG-2026-001's remedy. Expect the same
+treatment for anything reported here.
+
+**What this project can promise.** Advisories are published in `SECURITY.md`,
+in the changelog, and in GitHub Releases, and superseded releases are annotated
+in place. There is no individual notification channel: this is an unfunded
+alpha with no subscriber list, and neither the AGPL grant nor a commercial
+licence adds a duty to contact anyone. Watch releases if you need to know.
 
 ## Scope boundary
 

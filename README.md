@@ -121,7 +121,18 @@ commercial license is available from MOBIUS LLC (sole rights holder):
 Annual invoicing available at USD 5,000/year.
 
 It is a license grant, not a service: no service is performed, no data of
-yours is accessed, and nothing you run depends on our availability.
+yours is accessed, and nothing you run depends on our availability. It carries
+no support, no uptime commitment, and no individual security-notification
+duty — advisories are published in `SECURITY.md` and in GitHub Releases, and
+watching releases is how you learn of them.
+
+This is alpha software whose efficacy is **not established**: the held-out
+evaluation did not meet its predeclared floors and the prospective study has
+not run. What the licence buys is permission to use the code without AGPL's
+source-disclosure obligation, plus the audit trail this project publishes —
+a declared mediation boundary, advisories for our own defects, and reproducible
+verification. It does not buy prevention, and nothing here should be read as
+a warranty of fitness for any purpose.
 
 Contact: **info@mobius.style** — licensing questions are not handled in Issues.
 
