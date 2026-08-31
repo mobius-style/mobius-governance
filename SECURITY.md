@@ -30,6 +30,71 @@ convenience; a deployment that must not lose the record needs independently
 administered, append-only retention, because a lost ledger silently restores
 replay.
 
+## Advisory MG-2026-002 — the 0.8.0/0.8.1 fix was incomplete (fixed in 0.8.2)
+
+**Affected:** 0.8.0 and 0.8.1. **Fixed:** 0.8.2. **Severity:** high for hosts
+using `FileApprovalLedger`; the approval-surface defects are high wherever a
+human reads the summary to decide.
+
+Adversarial review of our own fix found four defects in it. We publish them in
+full because two of them made claims in our own documentation false.
+
+1. **The file ledger was not atomic.** `FileApprovalLedger` read the ledger and
+   then appended, with no lock between. Concurrent callers each saw a ledger
+   without the nonce and each concluded the grant was unspent. Measured: twelve
+   concurrent processes presenting one nonce, eight received permission. Agents
+   issue tool calls in parallel and the CLI runs one process per call, so this
+   is the normal case. This is the replay of MG-2026-001 reached through a
+   different door. Fixed with an exclusive lock (`flock`) spanning check and
+   append; `InMemoryApprovalLedger` is likewise now atomic.
+2. **The approval summary was not injective, contrary to our claim.** Only
+   values were JSON-encoded; `operation`, `tool`, argument keys, and
+   `source_ids` were interpolated raw. Two requests with different digests
+   could render identically, and a single untrusted source could be made to
+   read as a trusted operator plus an untrusted page. Fixed by encoding every
+   interpolated element and rendering sources one per line with a count.
+3. **Compound disclosure never fired on the adapter path.** The scan covered
+   only top-level string arguments, but the `PreToolUse` adapter puts the
+   command in `target`. Chained commands reached approvers with no warning.
+   Fixed by scanning `target` and recursing into nested lists and mappings, by
+   adding `<(`, `>(`, and `$'` to the token set, and by correcting the adapter:
+   it truncated the command at 10,000 characters and preferred `file_path` over
+   `command`, either of which pushed the chaining operators out of view. The
+   adapter now forwards the markers it finds in the fields whose value is
+   executed (`command`, `cmd`, `script`, `argv`, `args`, `shell`), at any
+   nesting depth. Two exclusions are deliberate and therefore undisclosed by
+   design: a bare `&`, because it appears in ordinary query strings; and
+   command-bearing fields under other names, because scanning every field made
+   the warning fire on most ordinary calls — file content, edit replacements,
+   and search patterns legitimately contain newlines and pipes. A warning that
+   fires constantly is trained away, which is the same failure as not warning.
+   A tool that passes a command under an unrecognised key is not disclosed as
+   compound; such tools are outside the declared set and reach `ask` as
+   `unknown`.
+4. **Abbreviated values carried a 64-bit hash prefix while the documentation
+   said "full SHA-256" and "cannot".** Fixed by emitting the full digest.
+
+Also corrected: the HTTP app advertised `version="0.7.0"` — the version
+withdrawn under MG-2026-001 — through `/openapi.json`; and `not_after` had no
+ceiling, so a self-asserted expiry could be perpetual (now bounded, default 24
+hours).
+
+### Threat model for approvals — read this before relying on the ledger
+
+The single-use ledger defends against **replay of a captured approval**. It does
+not defend against **forgery of a new approval**. Authenticity rests entirely on
+the host-side `approval_verifier`, and **the verifier shipped in this repository
+is a stub that returns true** (`cli.py`): it marks the local-operator boundary,
+it does not authenticate anything. Anyone who can write an approval file can
+mint fresh nonces without limit. A deployment that needs approvals to be
+unforgeable must supply a verifier that checks a signature over the whole
+approval, including the nonce.
+
+The ledger also cannot defend its own storage: deleting or truncating it
+restores replay, and the governed agent has `Bash`, which is gated at `ask`
+rather than denied. Independently administered, append-only retention is not a
+nicety here.
+
 ## Supported release
 
 Version 0.8.x is an alpha implementation. Security fixes may change policy

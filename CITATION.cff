@@ -4,7 +4,7 @@ title: "mobius-governance: bounded context scanning and action mediation"
 authors:
   - family-names: Toeda
     given-names: Taiko
-version: 0.8.1
+version: 0.8.2
 date-released: 2026-08-31
 license: AGPL-3.0-or-later
 repository-code: "https://github.com/mobius-style/mobius-governance"

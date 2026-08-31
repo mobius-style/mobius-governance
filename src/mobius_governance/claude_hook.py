@@ -11,7 +11,7 @@ import json
 import re
 from typing import Any
 
-from .actions import ACTION_SCHEMA, ActionGate, ActionRequest
+from .actions import ACTION_SCHEMA, ActionGate, ActionRequest, _compound_tokens
 from .policy import GuardEngine, PolicyError
 
 HOOK_EVENT = "PreToolUse"
@@ -41,19 +41,51 @@ def _canonical_digest(value: Any) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+# Fields whose value is executed rather than stored, searched, or displayed.
+_EXECUTABLE_FIELDS = frozenset({"command", "cmd", "script", "argv", "args", "shell"})
+
+
 def _target(tool_name: str, tool_input: dict[str, Any]) -> str:
-    for key in ("file_path", "path", "command", "url", "query", "description"):
+    """Pick the field that names what the call acts on.
+
+    ``command`` is checked first: when a shell command is present it is the
+    effect, and letting a co-occurring ``file_path`` win would hide it from the
+    compound scan entirely.  The value is not truncated here -- truncating it
+    let a caller push chaining operators past the cut-off and silence the
+    warning -- so truncation happens only at render time, where the full value
+    is still hashed.
+    """
+
+    for key in ("command", "file_path", "path", "url", "query", "description"):
         value = tool_input.get(key)
         if isinstance(value, str) and value.strip():
-            return value.strip()[:10_000]
+            return value.strip()
     return tool_name
+
+
+def _strings(value: Any) -> list[str]:
+    """Every string anywhere in a value, at any nesting depth."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for key, item in value.items()
+                for s in _strings(key) + _strings(item)]
+    if isinstance(value, (list, tuple)):
+        return [s for item in value for s in _strings(item)]
+    return []
 
 
 def _classify(tool_name: str, tool_input: dict[str, Any]) -> tuple[str, bool, bool, bool]:
     """Return operation, external, reversible, uses_credentials."""
 
     target = _target(tool_name, tool_input)
-    sensitive = bool(_SENSITIVE.search(target))
+    # Scan every string in the input, not only the one field chosen as target:
+    # preferring `command` for the compound scan would otherwise hide a
+    # credential path sitting in a co-occurring `file_path`.
+    sensitive = any(
+        bool(_SENSITIVE.search(item))
+        for item in _strings(tool_input)
+    ) or bool(_SENSITIVE.search(target))
     if tool_name in {"Read"}:
         return "read", False, True, sensitive
     if tool_name in {"Glob", "Grep"}:
@@ -104,6 +136,17 @@ def action_from_hook(payload: Any) -> ActionRequest:
         "arguments": {
             "tool_input_sha256": digest,
             "field_names": sorted(str(key) for key in tool_input),
+            # Chaining markers from the fields that carry a command, including
+            # an argv list or a nested mapping.  Scanning the whole input would
+            # be worse than scanning too little: file content, edit
+            # replacements, and search patterns legitimately contain newlines
+            # and pipes, so the warning would fire on most ordinary calls and
+            # be trained away -- the same failure the bare "&" exclusion exists
+            # to avoid.  Only the markers travel, never the input.
+            "chaining_markers": sorted(_compound_tokens(
+                {key: value for key, value in tool_input.items()
+                 if key in _EXECUTABLE_FIELDS}
+            )),
         },
         "source_ids": [source_id[:200]],
         "source_trust": ["unknown"],
@@ -126,10 +169,15 @@ def _hook_output(decision: str, reason: str) -> dict[str, Any]:
 def evaluate_claude_hook(payload: Any, engine: GuardEngine) -> dict[str, Any]:
     request = action_from_hook(payload)
     decision = ActionGate(engine).decide(request)
+    # The reason string is the only surface a human sees on this path, so the
+    # rendering of what they are approving has to travel with the verdict.
+    # Reason codes and a digest tell an approver that a decision happened; they
+    # do not tell them what they would be approving.
     reason = (
         "MOBIUS bounded action gate: "
         + ",".join(decision.reason_codes)
-        + f"; action_digest={decision.action_digest}"
+        + f"; action_digest={decision.action_digest}\n"
+        + request.summary(redact_values=True)
     )
     return _hook_output(decision.decision, reason)
 

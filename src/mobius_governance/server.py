@@ -18,6 +18,7 @@ from .core import (GovernanceComposer, ROUTE_ABSTAIN, ROUTE_ASK,
                    DEFAULT_ABSTAIN_MESSAGE)
 from .backends import OpenAICompatBackend, BackendError
 from .actions import ActionGate, ActionRequest
+from . import __version__
 from .policy import GuardEngine, PolicyError
 
 _FIXED_TS = 0  # created timestamp; wall-clock is irrelevant to callers and unbounded here.
@@ -138,7 +139,7 @@ def create_app(composer: GovernanceComposer | None = None,
     backend = backend or OpenAICompatBackend()
     engine = composer.guard_engine
     gate = ActionGate(engine)
-    app = FastAPI(title="mobius-governance", version="0.7.0")
+    app = FastAPI(title="mobius-governance", version=__version__)
 
     @app.get("/health")
     def health():  # noqa: ANN202

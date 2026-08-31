@@ -47,11 +47,12 @@ class ActionGateTests(unittest.TestCase):
             "action_digest": request.digest,
             "nonce": "n" * 32,
             "audience": "test-host",
-            "not_after": 4102444800,
+            "not_after": 4600,
         })
         decision = ActionGate(
             GuardEngine.from_path(), approval_verifier=lambda supplied, action: True,
             approval_ledger=InMemoryApprovalLedger(), audience="test-host",
+            clock=lambda: 1000.0,
         ).decide(request, approval)
         self.assertEqual(decision.decision, "allow")
         self.assertIn("EXACT_ACTION_APPROVED", decision.reason_codes)
@@ -66,7 +67,7 @@ class ActionGateTests(unittest.TestCase):
             "action_digest": request.digest,
             "nonce": "n" * 32,
             "audience": "test-host",
-            "not_after": 4102444800,
+            "not_after": 4600,
         })
         # audience/ledger are supplied so this test isolates the verifier rule;
         # each missing host input has its own dedicated test below.
@@ -74,6 +75,7 @@ class ActionGateTests(unittest.TestCase):
             GuardEngine.from_path(),
             approval_ledger=InMemoryApprovalLedger(),
             audience="test-host",
+            clock=lambda: 1000.0,
         ).decide(request, approval)
         self.assertEqual(decision.decision, "ask")
         self.assertIn("APPROVAL_VERIFIER_UNAVAILABLE", decision.reason_codes)
@@ -89,12 +91,13 @@ class ActionGateTests(unittest.TestCase):
             "action_digest": first.digest,
             "nonce": "n" * 32,
             "audience": "test-host",
-            "not_after": 4102444800,
+            "not_after": 4600,
         })
         decision = ActionGate(
             GuardEngine.from_path(),
             approval_verifier=lambda supplied, action: True,
             approval_ledger=InMemoryApprovalLedger(), audience="test-host",
+            clock=lambda: 1000.0,
         ).decide(second, approval)
         self.assertEqual(decision.decision, "ask")
         self.assertIn("APPROVAL_DIGEST_MISMATCH", decision.reason_codes)
@@ -123,7 +126,7 @@ class ActionGateTests(unittest.TestCase):
             "action_digest": request.digest,
             "nonce": "n" * 32,
             "audience": "test-host",
-            "not_after": 4102444800,
+            "not_after": 4600,
         })
         gate = ActionGate(
             GuardEngine.from_path(),
@@ -166,7 +169,7 @@ class ActionGateTests(unittest.TestCase):
 
     def test_expired_approval_is_refused(self) -> None:
         gate, request, approval = self._instance_fixture()
-        gate.clock = lambda: 4102444801.0
+        gate.clock = lambda: 4601.0
         decision = gate.decide(request, approval)
         self.assertEqual(decision.decision, "ask")
         self.assertIn("APPROVAL_EXPIRED", decision.reason_codes)
@@ -178,6 +181,22 @@ class ActionGateTests(unittest.TestCase):
         self.assertEqual(gate.decide(request, approval).decision, "ask")
         gate.audience = "test-host"
         self.assertEqual(gate.decide(request, approval).decision, "allow")
+
+    def test_approval_lifetime_is_bounded(self) -> None:
+        """A self-asserted expiry with no ceiling is effectively perpetual."""
+        gate, request, _ = self._instance_fixture()
+        far = Approval.from_dict({
+            "schema_version": APPROVAL_SCHEMA, "approval_id": "long",
+            "channel": "trusted_user", "approved": True,
+            "action_digest": request.digest, "nonce": "n" * 32,
+            "audience": "test-host", "not_after": 4102444800,
+        })
+        decision = gate.decide(request, far)
+        self.assertEqual(decision.decision, "ask")
+        self.assertIn("APPROVAL_LIFETIME_EXCEEDS_LIMIT", decision.reason_codes)
+        # Refusing on lifetime must not spend the grant.
+        gate.max_approval_lifetime = None
+        self.assertEqual(gate.decide(request, far).decision, "allow")
 
     def test_v1_approval_without_nonce_is_rejected(self) -> None:
         """The old replayable schema can no longer be presented at all."""
@@ -202,7 +221,7 @@ class ActionGateTests(unittest.TestCase):
                 "action_digest": request.digest,
                 "nonce": "short",
                 "audience": "test-host",
-                "not_after": 4102444800,
+                "not_after": 4600,
             })
 
 

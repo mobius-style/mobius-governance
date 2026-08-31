@@ -8,9 +8,11 @@ the trusted approval object used by this boundary.
 """
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
@@ -32,7 +34,11 @@ _APPROVAL_KEYS = {
 }
 _TRUST = {"trusted", "untrusted", "unknown"}
 # Shell metacharacters that make one approved command several effects.
-_COMPOUND = ("&&", "||", ";", "|", "$(", "`", "\n")
+# Deliberately excludes a bare "&": it appears in ordinary query strings, and a
+# warning that fires on every URL with parameters trains an approver to ignore
+# it.  Backgrounding with "&" is covered by the newline and ";" tokens in the
+# forms that actually chain effects.
+_COMPOUND = ("&&", "||", ";", "|", "$(", "`", "<(", ">(", "$'", "\n", "\r")
 _SUMMARY_INLINE_LIMIT = 160
 _EFFECTFUL = {
     "write", "edit", "send", "submit", "navigate", "execute", "download",
@@ -116,16 +122,22 @@ class ActionRequest:
     def digest(self) -> str:
         return hashlib.sha256(_canonical(self.to_dict())).hexdigest()
 
-    def summary(self) -> str:
+    def summary(self, *, redact_values: bool = False) -> str:
         """Render what a human is being asked to approve.
 
-        The rendering is derived from ``to_dict()`` -- the same structure the
-        digest is computed over -- so the text an approver reads cannot drift
-        from the bytes they are authorising.  Values are JSON-encoded, which
-        escapes newlines and control characters: a body that contains
-        ``\n  target: safe@example.com`` cannot forge an extra summary line.
-        Long values are abbreviated with the SHA-256 and length of the full
-        value appended, so abbreviation can never make two different values
+        Derived from ``to_dict()`` -- the structure the digest is computed over
+        -- so the text an approver reads cannot drift from the bytes they
+        authorise.  The injectivity below describes the full rendering; with
+        ``redact_values`` the content is replaced by its length and the result
+        is deliberately not injective (see the elided-rendering note in
+        ``docs/MEDIATION_SCOPE.md``).  **Every** interpolated element is
+        JSON-encoded, values and
+        field names alike: encoding only values would let an argument key, a
+        tool name, or a source identifier carry the delimiters this layout uses
+        and forge an extra line.  Sources are rendered one per line with an
+        index, so a name containing the separator cannot appear to be several
+        sources.  Long values are abbreviated with the full SHA-256 and length
+        of the value appended, so abbreviation cannot make two different values
         render identically.
         """
 
@@ -133,41 +145,81 @@ class ActionRequest:
 
         def render(value: Any) -> str:
             text = json.dumps(value, ensure_ascii=False, sort_keys=True)
+            if redact_values:
+                # Some channels display the gate's reason beside the host's own
+                # rendering of the same call, and are logged.  Repeating the
+                # value there duplicates it onto a second surface while telling
+                # the approver nothing the host has not already shown, so the
+                # content is elided and only its length is kept.
+                #
+                # This is de-duplication, NOT secrecy.  An unsalted digest of a
+                # low-entropy value is recoverable by search -- a four-digit PIN
+                # falls in milliseconds -- so no digest is emitted here.  A
+                # length alone still leaks a little; a channel that must not
+                # carry even that should not be shown a rendering at all.
+                return f"[elided, {len(text)} chars]"
             if len(text) <= _SUMMARY_INLINE_LIMIT:
                 return text
-            full = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+            full = hashlib.sha256(text.encode("utf-8")).hexdigest()
             return f"{text[:_SUMMARY_INLINE_LIMIT]}... [sha256:{full}, {len(text)} chars]"
 
-        lines = [f"ACTION {record['operation']} via {record['tool']}"]
+        def plain(value: Any) -> str:
+            return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+        lines = ["ACTION"]
+        # The operation and the tool name are the classification the gate adds;
+        # they are never the payload, and eliding them would leave the approver
+        # with flags and no subject.
+        lines.append(f"  operation    : {plain(record['operation'])}")
+        lines.append(f"  tool         : {plain(record['tool'])}")
         lines.append(f"  target       : {render(record['target'])}")
         lines.append(f"  external     : {'yes' if record['external'] else 'no'}")
         lines.append(f"  reversible   : {'yes' if record['reversible'] else 'no'}")
         lines.append(f"  credentials  : {'yes' if record['uses_credentials'] else 'no'}")
-        sources = ", ".join(
-            f"{name}({trust})" for name, trust
-            in zip(record["source_ids"], record["source_trust"])
-        )
-        lines.append(f"  sources      : {sources or '(none)'}")
+
+        names, trusts = record["source_ids"], record["source_trust"]
+        lines.append(f"  sources      : {len(names)}")
+        for index in range(max(len(names), len(trusts))):
+            name = render(names[index]) if index < len(names) else "(missing)"
+            # Trust level is the provenance classification, never payload, and
+            # it is the field most likely to change the approver's answer.
+            trust = plain(trusts[index]) if index < len(trusts) else "(missing)"
+            lines.append(f"    [{index}] id={name} trust={trust}")
 
         arguments = record["arguments"]
-        if arguments:
-            lines.append("  arguments:")
-            for key in sorted(arguments):
-                lines.append(f"    {key} = {render(arguments[key])}")
-        else:
-            lines.append("  arguments    : (none)")
+        lines.append(f"  arguments    : {len(arguments)}")
+        for key in sorted(arguments, key=lambda item: json.dumps(item, sort_keys=True)):
+            lines.append(f"    {render(key)} = {render(arguments[key])}")
 
-        for key in sorted(arguments):
-            value = arguments[key]
-            if isinstance(value, str):
-                hits = [token for token in _COMPOUND if token in value]
-                if hits:
-                    shown = ", ".join(repr(token) for token in hits)
-                    lines.append(
-                        f"  ! COMPOUND   : argument {key!r} chains several effects "
-                        f"({shown}); one approval covers all of them"
-                    )
+        hits = sorted(_compound_tokens(record["target"]) | _compound_tokens(arguments))
+        if hits:
+            shown = ", ".join(json.dumps(token) for token in hits)
+            lines.append(
+                f"  ! COMPOUND   : this request chains several effects ({shown}); "
+                "one approval covers all of them"
+            )
         return "\n".join(lines)
+
+
+def _compound_tokens(value: Any) -> set[str]:
+    """Find effect-chaining tokens anywhere in a value, at any nesting depth.
+
+    Scanning only top-level string arguments misses the two ways a command
+    actually arrives: inside ``target``, and inside a list or mapping such as
+    an argv array.
+    """
+
+    found: set[str] = set()
+    if isinstance(value, str):
+        found.update(token for token in _COMPOUND if token in value)
+    elif isinstance(value, Mapping):
+        for key, item in value.items():
+            found |= _compound_tokens(key)
+            found |= _compound_tokens(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            found |= _compound_tokens(item)
+    return found
 
 
 @dataclass(frozen=True)
@@ -246,13 +298,15 @@ class InMemoryApprovalLedger:
 
     def __init__(self) -> None:
         self._consumed: set[tuple[str, str]] = set()
+        self._lock = threading.Lock()
 
     def __call__(self, approval: "Approval") -> bool:
         key = (approval.audience, approval.nonce)
-        if key in self._consumed:
-            return False
-        self._consumed.add(key)
-        return True
+        with self._lock:
+            if key in self._consumed:
+                return False
+            self._consumed.add(key)
+            return True
 
 
 class FileApprovalLedger:
@@ -268,37 +322,49 @@ class FileApprovalLedger:
     def __init__(self, path: str) -> None:
         self.path = path
 
-    def _seen(self, audience: str, nonce: str) -> bool:
-        try:
-            with open(self.path, "r", encoding="utf-8") as handle:
-                for line in handle:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        record = json.loads(line)
-                    except ValueError:
-                        raise PolicyError(f"approval ledger is corrupt: {self.path}")
-                    if record.get("audience") == audience and record.get("nonce") == nonce:
-                        return True
-        except FileNotFoundError:
-            return False
+    def _seen(self, handle: Any, audience: str, nonce: str) -> bool:
+        handle.seek(0)
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except ValueError:
+                raise PolicyError(f"approval ledger is corrupt: {self.path}")
+            if record.get("audience") == audience and record.get("nonce") == nonce:
+                return True
         return False
 
     def __call__(self, approval: "Approval") -> bool:
-        if self._seen(approval.audience, approval.nonce):
-            return False
+        """Consume a nonce under an exclusive lock.
+
+        The check and the append must be one critical section.  Without the
+        lock, concurrent callers each read a ledger that does not yet contain
+        the nonce and each conclude the grant is unspent -- which is the same
+        replay this ledger exists to prevent, arriving through a different
+        failure mode.  Agents issue tool calls in parallel and the CLI runs one
+        process per call, so concurrency is the normal case, not an edge case.
+        """
+
         record = {
             "audience": approval.audience,
             "nonce": approval.nonce,
             "approval_id": approval.approval_id,
             "action_digest": approval.action_digest,
         }
-        with open(self.path, "a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        return True
+        with open(self.path, "a+", encoding="utf-8") as handle:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                if self._seen(handle, approval.audience, approval.nonce):
+                    return False
+                handle.seek(0, os.SEEK_END)
+                handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+                return True
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 @dataclass(frozen=True)
@@ -333,6 +399,7 @@ class ActionGate:
         approval_ledger: Callable[[Approval], bool] | None = None,
         audience: str | None = None,
         clock: Callable[[], float] | None = None,
+        max_approval_lifetime: int | None = 86_400,
     ) -> None:
         if not isinstance(engine, GuardEngine):
             raise TypeError("ActionGate requires a GuardEngine")
@@ -341,6 +408,9 @@ class ActionGate:
         self.approval_ledger = approval_ledger
         self.audience = audience
         self.clock = clock or time.time
+        # A grant whose expiry is self-asserted and unbounded is effectively
+        # perpetual, which reopens replay wherever a ledger can be lost.
+        self.max_approval_lifetime = max_approval_lifetime
 
     def decide(self, request: ActionRequest, approval: Approval | None = None) -> ActionDecision:
         rules = self.engine.policy.action_rules
@@ -377,6 +447,9 @@ class ActionGate:
                 reasons.append("APPROVAL_AUDIENCE_MISMATCH")
             elif approval.not_after <= self.clock():
                 reasons.append("APPROVAL_EXPIRED")
+            elif (self.max_approval_lifetime is not None
+                  and approval.not_after - self.clock() > self.max_approval_lifetime):
+                reasons.append("APPROVAL_LIFETIME_EXCEEDS_LIMIT")
             elif self.approval_verifier is None:
                 reasons.append("APPROVAL_VERIFIER_UNAVAILABLE")
             elif not self.approval_verifier(approval, request):
