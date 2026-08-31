@@ -19,7 +19,7 @@ instance, not to an action class.** See `SECURITY.md`.
   0.7.0 code failed (59 unit tests, up from 51).
 - Detector, policy (130 rules), and contract suite (105 cases) are unchanged.
 
-## Unreleased
+## 0.8.1-alpha — 2026-08-31
 
 - Added a human-readable approval surface. Every decision now carries a
   `summary` rendered from the digested structure, so what an approver reads is

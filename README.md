@@ -1,6 +1,6 @@
 # mobius-governance
 
-`mobius-governance` 0.8.0 is a local-first, model-independent alpha for
+`mobius-governance` 0.8.1 is a local-first, model-independent alpha for
 bounded retrieval-context scanning and typed agent-action mediation.
 
 Current evidence status: **implementation verified; efficacy NOT ESTABLISHED**.

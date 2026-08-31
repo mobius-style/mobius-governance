@@ -23,7 +23,7 @@ from .actions import (ActionDecision, ActionGate, ActionRequest, Approval,
 from .policy import GuardEngine, PolicyError, PolicyManifest, load_policy
 from .claude_hook import action_from_hook, evaluate_claude_hook
 
-__version__ = "0.8.0"
+__version__ = "0.8.1"
 __all__ = [
     "GovernanceComposer", "GovernanceDecision", "RouteDecision",
     "HeuristicRouter", "InfinityRouter", "build_router",
