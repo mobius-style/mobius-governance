@@ -67,6 +67,33 @@ effects inside one approved digest; covert channels can ride inside legitimate
 traffic. Mediation makes the path finite and the decision checkable. It does
 not make the content of a permitted act harmless.
 
+## The approval surface
+
+A correct digest is not consent. If an approver is shown a rendering that does
+not distinguish the action they are approving from a different one, the
+exact-digest binding holds and the approval still means nothing. Every decision
+therefore carries a `summary`: a deterministic rendering derived from the same
+structure the digest is computed over, so the text a human reads cannot drift
+from the bytes they authorise.
+
+Three properties are enforced by `tests/test_approval_surface.py`:
+
+- **Injective.** No two actions with different digests render identically, so
+  reading the summary is equivalent to checking the digest. Long values are
+  abbreviated with the SHA-256 and length of the full value appended, so
+  abbreviation cannot collapse two different values into one reading.
+- **Unforgeable from inside.** Values are JSON-encoded, which escapes newlines
+  and control characters. An argument containing `\n  target : safe@example.com`
+  is rendered as escaped text inside its value, not promoted to a field line.
+- **Compound-disclosing.** When one argument chains several effects — `&&`,
+  `||`, `;`, `|`, command substitution, or embedded newlines — the summary says
+  so. Shell strings cannot be safely split into separate typed actions, so the
+  boundary discloses compositeness instead of pretending to decompose it.
+
+This narrows, but does not close, the granularity gap: one approval still
+covers the whole compound command. The approver is told that, rather than left
+to infer it.
+
 ## What may and may not be claimed
 
 Permitted: *within the declared tool set, no effect-bearing call reaches the

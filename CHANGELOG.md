@@ -21,6 +21,16 @@ instance, not to an action class.** See `SECURITY.md`.
 
 ## Unreleased
 
+- Added a human-readable approval surface. Every decision now carries a
+  `summary` rendered from the digested structure, so what an approver reads is
+  derived from what they authorise. The rendering is injective with respect to
+  the digest (abbreviated values carry the full value's SHA-256 and length),
+  argument values are JSON-encoded so they cannot forge summary lines, and one
+  approval covering a chained command is disclosed as compound.
+- Added `tests/test_approval_surface.py` (7 tests, 75 total), calibrated
+  against four broken renderings: abbreviation without a hash, raw value
+  rendering that permits newline injection, a dropped provenance line, and
+  removed compound disclosure.
 - Declared the mediation boundary in `docs/MEDIATION_SCOPE.md`: eleven
   `PreToolUse` tools in scope, unrecognised tools fail closed, and the interior
   of a `Bash` command plus effect paths that never reach the adapter are stated

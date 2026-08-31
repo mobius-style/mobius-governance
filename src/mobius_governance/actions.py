@@ -31,6 +31,9 @@ _APPROVAL_KEYS = {
     "nonce", "audience", "not_after",
 }
 _TRUST = {"trusted", "untrusted", "unknown"}
+# Shell metacharacters that make one approved command several effects.
+_COMPOUND = ("&&", "||", ";", "|", "$(", "`", "\n")
+_SUMMARY_INLINE_LIMIT = 160
 _EFFECTFUL = {
     "write", "edit", "send", "submit", "navigate", "execute", "download",
     "upload", "delete", "purchase", "admin", "credential", "unknown",
@@ -112,6 +115,59 @@ class ActionRequest:
     @property
     def digest(self) -> str:
         return hashlib.sha256(_canonical(self.to_dict())).hexdigest()
+
+    def summary(self) -> str:
+        """Render what a human is being asked to approve.
+
+        The rendering is derived from ``to_dict()`` -- the same structure the
+        digest is computed over -- so the text an approver reads cannot drift
+        from the bytes they are authorising.  Values are JSON-encoded, which
+        escapes newlines and control characters: a body that contains
+        ``\n  target: safe@example.com`` cannot forge an extra summary line.
+        Long values are abbreviated with the SHA-256 and length of the full
+        value appended, so abbreviation can never make two different values
+        render identically.
+        """
+
+        record = self.to_dict()
+
+        def render(value: Any) -> str:
+            text = json.dumps(value, ensure_ascii=False, sort_keys=True)
+            if len(text) <= _SUMMARY_INLINE_LIMIT:
+                return text
+            full = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+            return f"{text[:_SUMMARY_INLINE_LIMIT]}... [sha256:{full}, {len(text)} chars]"
+
+        lines = [f"ACTION {record['operation']} via {record['tool']}"]
+        lines.append(f"  target       : {render(record['target'])}")
+        lines.append(f"  external     : {'yes' if record['external'] else 'no'}")
+        lines.append(f"  reversible   : {'yes' if record['reversible'] else 'no'}")
+        lines.append(f"  credentials  : {'yes' if record['uses_credentials'] else 'no'}")
+        sources = ", ".join(
+            f"{name}({trust})" for name, trust
+            in zip(record["source_ids"], record["source_trust"])
+        )
+        lines.append(f"  sources      : {sources or '(none)'}")
+
+        arguments = record["arguments"]
+        if arguments:
+            lines.append("  arguments:")
+            for key in sorted(arguments):
+                lines.append(f"    {key} = {render(arguments[key])}")
+        else:
+            lines.append("  arguments    : (none)")
+
+        for key in sorted(arguments):
+            value = arguments[key]
+            if isinstance(value, str):
+                hits = [token for token in _COMPOUND if token in value]
+                if hits:
+                    shown = ", ".join(repr(token) for token in hits)
+                    lines.append(
+                        f"  ! COMPOUND   : argument {key!r} chains several effects "
+                        f"({shown}); one approval covers all of them"
+                    )
+        return "\n".join(lines)
 
 
 @dataclass(frozen=True)
@@ -252,6 +308,7 @@ class ActionDecision:
     action_digest: str
     approval_required: bool
     policy: Mapping[str, Any]
+    summary: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -260,6 +317,7 @@ class ActionDecision:
             "reason_codes": list(self.reason_codes),
             "action_digest": self.action_digest,
             "approval_required": self.approval_required,
+            "summary": self.summary,
             "policy": dict(self.policy),
         }
 
@@ -337,6 +395,7 @@ class ActionGate:
             action_digest=digest,
             approval_required=base == "ask",
             policy=self.engine.manifest.to_dict(),
+            summary=request.summary(),
         )
 
 
