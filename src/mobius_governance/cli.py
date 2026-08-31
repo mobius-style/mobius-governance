@@ -64,7 +64,14 @@ def main(argv=None) -> int:
     action = sub.add_parser("action", parents=[policy_common], help="Decide a typed action request JSON file.")
     action.add_argument("request")
     action.add_argument("--approval", default=None,
-                        help="Optional trusted approval JSON bound to the action digest.")
+                        help="Optional trusted approval JSON bound to one exact action instance.")
+    action.add_argument("--approval-ledger", default=None,
+                        help="Append-only file recording consumed approval nonces. "
+                             "Required with --approval; without it the grant cannot be "
+                             "spent exactly once and the action is not promoted.")
+    action.add_argument("--approval-audience", default=None,
+                        help="Installation identifier this approval is bound to. "
+                             "Required with --approval.")
     sub.add_parser(
         "claude-hook",
         parents=[policy_common],
@@ -72,7 +79,7 @@ def main(argv=None) -> int:
     )
 
     args = p.parse_args(argv)
-    from .actions import ActionGate, ActionRequest, Approval
+    from .actions import ActionGate, ActionRequest, Approval, FileApprovalLedger
     from .policy import GuardEngine, PolicyError, load_json_object
 
     if args.cmd == "claude-hook":
@@ -121,7 +128,13 @@ def main(argv=None) -> int:
             # Supplying --approval is an explicit local-operator boundary.  The
             # public HTTP endpoint never enables this verifier from request JSON.
             verifier = (lambda supplied, action: True) if approval is not None else None
-            decision = ActionGate(engine, approval_verifier=verifier).decide(request, approval)
+            ledger = FileApprovalLedger(args.approval_ledger) if args.approval_ledger else None
+            decision = ActionGate(
+                engine,
+                approval_verifier=verifier,
+                approval_ledger=ledger,
+                audience=args.approval_audience,
+            ).decide(request, approval)
             _print_json(decision.to_dict())
             return 0 if decision.decision == "allow" else 1
     except (OSError, UnicodeDecodeError, PolicyError, TypeError) as exc:

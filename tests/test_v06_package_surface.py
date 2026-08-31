@@ -15,10 +15,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class V07PackageSurfaceTests(unittest.TestCase):
-    def test_module_and_distribution_metadata_are_v070(self) -> None:
+    def test_module_and_distribution_metadata_are_v080(self) -> None:
+        # The package version is 0.8.0 (action-gate security fix); the detector
+        # engine is deliberately still structural_v0_7 because the scanner and
+        # its 130-rule policy are unchanged by that fix.
         project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-        self.assertEqual(mobius_governance.__version__, "0.7.0")
-        self.assertEqual(project["project"]["version"], "0.7.0")
+        self.assertEqual(mobius_governance.__version__, "0.8.0")
+        self.assertEqual(project["project"]["version"], "0.8.0")
 
     def test_cli_manifest_defaults_to_v07_and_keeps_all_explicit_compatibility_modes(self) -> None:
         for arguments, expected in (

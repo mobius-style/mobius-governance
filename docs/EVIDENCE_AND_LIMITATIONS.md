@@ -2,7 +2,7 @@
 
 ## Current claim
 
-The v0.7 package is a bounded alpha implementation whose package identity,
+The v0.8 package is a bounded alpha implementation whose package identity,
 source members, policy custody, calibration behavior, and typed action boundary
 were verified internally in isolated processes.
 
@@ -53,4 +53,10 @@ SHA-256 d9fc7c630a777413db6d13b3ec1936d74d91da035f529e71e9a56492ee938506
 
 The release manifest proves the public source tree; it does not convert the
 internal candidate identity into an efficacy result.
+
+That anchor names the 0.7.0 candidate. The 0.8.0 security fix changes the
+runtime source, so the pinned 0.7.0 wheel is no longer the current public
+implementation: any prospective evaluation must re-pin and re-qualify its
+candidate against 0.8.0 before its pre-execution freeze. No qualification
+receipt is transferred across that change.
 
