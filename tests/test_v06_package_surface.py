@@ -20,8 +20,8 @@ class V07PackageSurfaceTests(unittest.TestCase):
         # engine is deliberately still structural_v0_7 because the scanner and
         # its 130-rule policy are unchanged by that fix.
         project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-        self.assertEqual(mobius_governance.__version__, "0.8.2")
-        self.assertEqual(project["project"]["version"], "0.8.2")
+        self.assertEqual(mobius_governance.__version__, "0.8.3")
+        self.assertEqual(project["project"]["version"], "0.8.3")
 
     def test_cli_manifest_defaults_to_v07_and_keeps_all_explicit_compatibility_modes(self) -> None:
         for arguments, expected in (

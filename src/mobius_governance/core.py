@@ -20,7 +20,11 @@ from __future__ import annotations
 
 import os
 import re
+import json
+import shutil
+import tempfile
 import warnings
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
@@ -192,7 +196,11 @@ def govern_context(
     guard_engine: GuardEngine | None = None,
     require_rcgov: bool = False,
 ):
-    """Govern retrieved context and return ``(clean_pack_text, meta)``.
+    """Govern retrieved context and return ``(governed_text, meta)``.
+
+    Since 0.8.3 the text is the retrieved context rebuilt segment by segment from
+    rcgov's records (excluded segments → placeholder + reason in ``meta["excluded"]``),
+    not rcgov's Clean Context Pack, which is a triage and omits without a trace.
 
     The packaged deterministic guard is mandatory. RCGov is an optional deeper
     classifier unless ``require_rcgov`` is true. Any mandatory-layer failure
@@ -244,7 +252,7 @@ def govern_context(
     dropped = scan_report["dropped_count"]
 
     try:
-        from rcgov.service import govern_bytes
+        from rcgov.pipeline import RunConfig, run as rcgov_run
     except Exception as exc:  # noqa: BLE001 — rcgov not installed
         if require_rcgov:
             return "", {
@@ -268,31 +276,59 @@ def govern_context(
             "scan": scan_report,
             "injection_dropped": dropped,
         }
+    if not kept:
+        return "", {
+            **base_meta,
+            "governed": True,
+            "status": "active",
+            "mode": "builtin_guard+rcgov",
+            "rcgov_status": "not_run_no_admitted_context",
+            "admitted_segment_count": 0,
+            "excluded": [],
+            "retained_flagged": [],
+            "scan": scan_report,
+            "injection_dropped": dropped,
+            "artifacts": [],
+        }
+    workdir = tempfile.mkdtemp(prefix="mobius_governance_rcgov_")
     try:
-        inputs = [(f"context_{i:03d}.md",
-                   f"# Retrieved context {i}\n\n{b}\n".encode("utf-8"))
-                  for i, b in enumerate(kept)]
-        if not inputs:
-            return "", {
-                **base_meta,
-                "governed": True,
-                "status": "active",
-                "mode": "builtin_guard+rcgov",
-                "rcgov_status": "not_run_no_admitted_context",
-                "admitted_segment_count": 0,
-                "scan": scan_report,
-                "injection_dropped": dropped,
-                "artifacts": [],
-            }
-        result = govern_bytes(inputs, task or "Answer the user's question.", profile=profile)
-        return result.artifacts.get("CLEAN_CONTEXT_PACK.md", ""), {
+        wd = Path(workdir)
+        (wd / "in").mkdir()
+        files = []
+        for i, b in enumerate(kept):
+            f = wd / "in" / f"context_{i:03d}.md"
+            f.write_text(f"# Retrieved context {i}\n\n{b}\n", encoding="utf-8")
+            files.append(f)
+        result = rcgov_run(files, RunConfig(
+            task=task or "Answer the user's question.", profile=profile,
+            output_dir=wd / "out", store_dir=wd / "store", commitments_path=None))
+        records = list(result.governed or [])
+        manifest = json.loads((wd / "out" / "CONTEXT_MANIFEST.json").read_text(encoding="utf-8"))
+        counts = manifest.get("counts") or {}
+        if counts.get("segments") != len(records):
+            raise RuntimeError(
+                f"manifest reports {counts.get('segments')} segments, records carry {len(records)}")
+        by_doc: dict[str, list] = {}
+        for r in records:
+            by_doc.setdefault(r.segment.document_id, []).append(r)
+        parts, excluded, retained, admitted = [], [], [], 0
+        for entry in manifest.get("inputs") or []:
+            doc = Path(entry["source_path"]).read_text(encoding="utf-8")
+            rebuilt, ex, rt, adm = _rebuild_segments(doc, by_doc.get(entry["document_id"], []))
+            parts.append(rebuilt)
+            excluded += ex
+            retained += rt
+            admitted += adm
+        return "\n\n".join(parts).strip() + ("\n" if parts else ""), {
             **base_meta,
             "governed": True,
             "status": "active",
             "mode": "builtin_guard+rcgov",
             "rcgov_status": "active",
-            "admitted_segment_count": len(inputs),
-            "artifact_count": len(result.artifacts),
+            "admitted_segment_count": admitted,
+            "segment_count": len(records),
+            "excluded": excluded,
+            "retained_flagged": retained,
             "scan": scan_report,
             "injection_dropped": dropped,
         }
@@ -320,6 +356,73 @@ def govern_context(
             "scan": scan_report,
             "injection_dropped": dropped,
         }
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
+# Heuristic-only secret kinds: kept in the context and listed, never excised.
+# high_entropy_token fires on ids, hashes and paths; excising it deletes most of
+# any real document (measured 2026-09-19 on 347 records: 1,508 flags, 0 confirmed).
+RETAIN_KINDS = frozenset({"high_entropy_token"})
+EXCLUDED_PLACEHOLDER = "_[segment excluded by RCGov — see governed['excluded']]_\n"
+_HEADING_LINE = re.compile(r"^#{1,6}\s+\S")
+
+
+def _hard_gated(rec) -> bool:
+    gr = rec.governed.gate_result if rec.governed is not None else None
+    return str(getattr(gr, "value", gr)) in ("block", "quarantine")
+
+
+def _classify_record(rec) -> tuple[str, str]:
+    """``exclude`` | ``retain`` | ``keep``, from rcgov's structured findings only."""
+    secret_kinds = list(dict.fromkeys(f.kind for f in (rec.secret_findings or [])))
+    injection = list(dict.fromkeys(f.pattern_id for f in (rec.injection_findings or [])))
+    confirmed = [k for k in secret_kinds if k not in RETAIN_KINDS]
+    if confirmed or injection:
+        return "exclude", ", ".join(confirmed + injection)
+    if secret_kinds:
+        return "retain", ", ".join(secret_kinds)
+    if _hard_gated(rec):
+        notes = rec.governed.notes
+        reason = ("; ".join(map(str, notes)) if isinstance(notes, (list, tuple)) else str(notes)) if notes else "gated"
+        return "exclude", reason
+    return "keep", ""
+
+
+def _rebuild_segments(doc: str, records) -> tuple[str, list, list, int]:
+    """Rebuild ``doc`` from rcgov's records by source span.
+
+    Kept segments are copied byte-for-byte; excluded ones keep a heading line and
+    get a placeholder. Spans are verified against the record's own text — a
+    mismatch raises rather than guesses. v0.8.2 and earlier returned rcgov's
+    Clean Context Pack here, which is a triage by authority and priority: a
+    segment routed to review was dropped with no trace (advisory MG-2026-003).
+    """
+    ordered = sorted(records, key=lambda r: r.segment.source_span.start)
+    out, excluded, retained, admitted = [], [], [], 0
+    cursor, n = 0, len(doc)
+    for rec in ordered:
+        sp = rec.segment.source_span
+        s, e = sp.start, sp.end
+        if not (0 <= cursor <= s <= e <= n) or doc[s:e] != rec.text:
+            raise RuntimeError(f"span verification failed for {rec.segment.segment_id} [{s}:{e}] of {n}")
+        klass, reason = _classify_record(rec)
+        entry = {"segment": rec.segment.segment_id,
+                 "heading": " / ".join(rec.segment.heading_path or ()), "reason": reason}
+        out.append(doc[cursor:s])
+        if klass == "exclude":
+            first, _nl, _rest = rec.text.partition("\n")
+            out.append((first + "\n\n" + EXCLUDED_PLACEHOLDER) if _HEADING_LINE.match(first)
+                       else EXCLUDED_PLACEHOLDER)
+            excluded.append(entry)
+        else:
+            out.append(doc[s:e])
+            admitted += 1
+            if klass == "retain":
+                retained.append(entry)
+        cursor = e
+    out.append(doc[cursor:])
+    return "".join(out), excluded, retained, admitted
 
 
 def compose_user_text(text: str, safe_context: str) -> str:
@@ -403,7 +506,12 @@ class GovernanceComposer:
                 gov,
                 True,
             )
-        empty = pack_is_empty(pack) if context_supplied else False
+        if not context_supplied:
+            empty = False
+        elif gov.get("rcgov_status") == "active":
+            empty = gov.get("admitted_segment_count", 0) == 0
+        else:
+            empty = pack_is_empty(pack)
         if context_supplied and empty and empty_policy == "abstain":
             return GovernanceDecision(ROUTE_ABSTAIN, RC_EMPTY_PACK, False, None,
                                       DEFAULT_NO_CONTEXT_MESSAGE, gov, True)

@@ -95,6 +95,42 @@ restores replay, and the governed agent has `Bash`, which is gated at `ask`
 rather than denied. Independently administered, append-only retention is not a
 nicety here.
 
+## Advisory MG-2026-003 — retrieved context was read off a triage, not a scrub (fixed in 0.8.3)
+
+**Affected:** 0.8.2 and earlier, whenever rcgov was installed and retrieved
+context was supplied. **Fixed:** 0.8.3. **Severity:** medium. Nothing forbidden
+reached the model; text that should have reached it silently did not, and the
+metadata said otherwise.
+
+`govern_context()` returned rcgov's `CLEAN_CONTEXT_PACK.md` as the governed
+context. That artifact is what rcgov judged *placeable* for the task after
+authority and priority appraisal. Without a commitments manifest — which this
+package never supplies — a segment of plain prose with no provenance is routed
+to `requires_review` and omitted, and the pack carries no marker for it. So
+whenever at least one other segment was admitted, the reviewed segment vanished
+from the prompt while the decision reported `governed=True`,
+`rcgov_status="active"` and `context_empty=False`. Measured on 2026-09-19: an
+ordinary English paragraph is dropped this way. When *nothing* was admitted the
+empty-pack path fired correctly, which is why the defect was not visible in the
+existing tests.
+
+The metadata claim was the part that mattered: `admitted_segment_count` counted
+the blobs handed to rcgov, not the segments the model saw, and a caller that
+trusted it had no way to know text was missing.
+
+0.8.3 rebuilds the context from rcgov's per-segment records: confirmed secrets,
+injection patterns and block/quarantine gates become a placeholder with the
+reason listed in `governed["excluded"]`; heuristic-only flags are kept and
+listed; everything else is byte-identical. `admitted_segment_count` now means
+what its name says, and `context_empty` is derived from it.
+
+**Action required:** upgrade to 0.8.3. If your integration read
+`governed["admitted_segment_count"]`, note its meaning changed from "blobs sent"
+to "segments admitted". The same defect shipped in three sibling artifacts
+(`moebiusT7/gemma-4-12b-mobius-custom` v1.0 and both `*-mobius-custom-c1`
+wrappers) and is fixed there; `rcgov` 0.2.0 exposes `rebuild_bytes()` so the
+correct primitive exists upstream.
+
 ## Supported release
 
 Version 0.8.x is an alpha implementation. Security fixes may change policy

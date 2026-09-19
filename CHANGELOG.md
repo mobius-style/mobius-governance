@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.8.3-alpha — 2026-09-20
+
+**Security fix (advisory MG-2026-003): retrieved context was read off rcgov's
+Clean Context Pack, which is a triage, not a scrub.** See `SECURITY.md`.
+
+- `govern_context()` handed the model `CLEAN_CONTEXT_PACK.md`. That artifact is
+  what rcgov judged *placeable* after authority and priority appraisal. Without
+  a commitments manifest a segment of plain prose with no provenance is routed
+  to `requires_review` and simply omitted, with no marker in the pack — so
+  whenever any other segment was admitted, that text vanished while
+  `governed=True`, `rcgov_status="active"`, and `context_empty=False`. Measured:
+  an English paragraph of ordinary prose is dropped this way.
+- Retrieved context is now **rebuilt segment by segment** from rcgov's records
+  (`rcgov.pipeline.run`): confirmed secrets, injection patterns and block /
+  quarantine gates are replaced by a placeholder and listed in
+  `governed["excluded"]` with their reason; heuristic-only flags
+  (`high_entropy_token` — ids, hashes, paths) are kept and listed in
+  `governed["retained_flagged"]`; everything else is byte-identical. Spans are
+  verified against rcgov's own records; a manifest that disagrees with them is
+  an error, and `require_rcgov` decides fail-closed vs degraded as before.
+- `context_empty` is now decided from `governed["admitted_segment_count"]`
+  when rcgov ran, not by sniffing the text for `_(none)_` placeholders.
+  `admitted_segment_count` is now the number of segments that reached the model,
+  not the number of input blobs handed to rcgov.
+- The mandatory built-in guard, the fail-closed semantics of `require_rcgov`,
+  and the degraded mode when rcgov is optional and fails are unchanged.
+- `tests/test_rebuild_context.py` pins the 0.8.2 drop and every branch of the
+  rebuild; the two `test_core_server.py` fixtures that mocked
+  `rcgov.service.govern_bytes` now mock `rcgov.pipeline.run`, which is the
+  dependency the code actually has.
+- Found on 2026-09-19 while the sibling Gemma-4 wrappers were being used as the
+  author's own daily session-record clerk; the same defect was shipped in
+  `gemma-4-12b-mobius-custom` v1.0 and both C1 wrappers, all re-released.
+  `rcgov` 0.2.0 adds `rebuild_bytes()` so future callers need not reimplement
+  this.
+
 ## 0.8.2-alpha — 2026-08-31
 
 **Security fix (advisory MG-2026-002): the 0.8.0/0.8.1 fix was incomplete.**

@@ -46,7 +46,7 @@ class CoreServerTests(unittest.TestCase):
         original_import = builtins.__import__
 
         def blocked_import(name, *args, **kwargs):
-            if name == "rcgov.service":
+            if name == "rcgov.pipeline":
                 raise ImportError("fixture: unavailable")
             return original_import(name, *args, **kwargs)
 
@@ -64,13 +64,14 @@ class CoreServerTests(unittest.TestCase):
     def test_rcgov_exception_text_is_not_returned(self) -> None:
         secret = "FAKE_PRIVATE_INPUT_MUST_NOT_LEAK"
         package = types.ModuleType("rcgov")
-        service = types.ModuleType("rcgov.service")
 
         def fail(*args, **kwargs):
             raise RuntimeError(secret)
 
-        service.govern_bytes = fail
-        with patch.dict(sys.modules, {"rcgov": package, "rcgov.service": service}):
+        pipeline = types.ModuleType("rcgov.pipeline")
+        pipeline.RunConfig = lambda **kw: kw
+        pipeline.run = fail
+        with patch.dict(sys.modules, {"rcgov": package, "rcgov.pipeline": pipeline}):
             _, meta = govern_context(
                 ["A benign retrieved fact."],
                 "Summarize",
@@ -83,17 +84,11 @@ class CoreServerTests(unittest.TestCase):
 
     def test_rcgov_free_text_summary_is_not_returned(self) -> None:
         secret = "RCGOV_SUMMARY_RAW_SENTINEL"
-        package = types.ModuleType("rcgov")
-        service = types.ModuleType("rcgov.service")
 
-        def succeed(*args, **kwargs):
-            return types.SimpleNamespace(
-                summary=secret,
-                artifacts={"CLEAN_CONTEXT_PACK.md": "A governed fact."},
-            )
-
-        service.govern_bytes = succeed
-        with patch.dict(sys.modules, {"rcgov": package, "rcgov.service": service}):
+        # 0.8.3: govern_context no longer reads govern_bytes' pack; the real record
+        # pipeline runs on the benign fact. rcgov's free-text summary must still not
+        # appear in meta — here it is simply never copied out of the run.
+        with patch.dict(sys.modules, {}):
             _, meta = govern_context(
                 ["A benign retrieved fact."],
                 "Summarize",
