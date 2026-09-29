@@ -1,32 +1,26 @@
-# mobius-governance 0.8.3-alpha
+# mobius-governance 0.8.4-alpha
 
-This release fixes one defect in how retrieved context reached the model. See
-`SECURITY.md`, advisory MG-2026-003.
+This release fixes one defect in how retrieved context reached the model, and
+closes one gap in the built-in guard. See `SECURITY.md`, advisory MG-2026-004.
 
-- `govern_context()` returned rcgov's **Clean Context Pack** as the governed
-  text. The pack is a *triage* of the input by authority and priority, not a
-  scrubbed copy: a segment rcgov routed to review — typically an English
-  paragraph of plain prose with no provenance — was omitted with no marker, so
-  whenever any other segment was admitted that text vanished from the prompt
-  while `governed=True` and `context_empty=False`. The model answered without
-  it and nothing said so.
-- Retrieved context is now rebuilt segment by segment from rcgov's records.
-  Excluded segments (confirmed secrets, injection patterns, block/quarantine
-  gates) leave a placeholder and are listed with their reason in
-  `governed["excluded"]`; heuristic-only flags are kept and listed; the rest is
-  byte-identical to what you passed in. `context_empty` follows
-  `governed["admitted_segment_count"]`.
-- Unchanged: the mandatory built-in guard, `require_rcgov` fail-closed
-  semantics, and degraded mode when the optional rcgov fails.
+- **A secret on a `#` line survived.** When a segment of retrieved context was
+  excised, 0.8.3 kept its first line if it looked like a heading. A commented
+  line such as `# HF_TOKEN=…` looks like one, so the secret that caused the
+  excision was handed to the model above the placeholder and repeated in
+  `governed["excluded"][].heading`.
+- **The built-in guard had no rule for AWS secret access keys.** It has one
+  now (policy `2026-09-29.1`).
 
-The same defect shipped in three sibling artifacts (`gemma-4-12b-mobius-custom`
-v1.0 and both `*-mobius-custom-c1` wrappers) and is fixed there too. It was
-found by using the wrappers, not by review — the first day they ran as the
-author's own session-record clerk. `rcgov` 0.2.0 adds `rebuild_bytes()` for
-this use case.
+What changed for you:
 
-Evidence status: implementation verified; **efficacy not established**. The
-held-out evaluation did not meet its predeclared minimum floors, and the
-prospective study remains unexecuted. This release does not claim complete
-prompt-injection prevention, certification, or production readiness. The
-interior of a `Bash` command is not mediated; see `docs/MEDIATION_SCOPE.md`.
+- Upgrade rcgov as well: `pip install "mobius-governance[govern]"` pins the
+  tag `v0.2.3` (0.2.2 is the minimum). With an older rcgov, 0.8.4 does not
+  use it: `require_rcgov=True` fails closed (`rcgov_too_old_or_broken`), and
+  optional mode falls back to the built-in guard alone and reads `degraded` —
+  which is less protection than 0.8.3 with rcgov 0.2.0 gave you in body text.
+- The policy hash changed. If you pin it, re-pin after your own regression run.
+- Decisions stored by 0.8.3 may hold a secret in
+  `governed["excluded"][].heading`.
+
+What did not change: the API, the shape of the metadata, the guard's other
+rules. What is still not covered is listed in the advisory.

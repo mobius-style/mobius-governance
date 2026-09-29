@@ -198,7 +198,8 @@ def govern_context(
 ):
     """Govern retrieved context and return ``(governed_text, meta)``.
 
-    Since 0.8.3 the text is the retrieved context rebuilt segment by segment from
+    Since 0.8.3 the text is the retrieved context rebuilt segment by segment (since
+    0.8.4 by ``rcgov.service.rebuild_records``, rcgov 0.2.2 or later) from
     rcgov's records (excluded segments → placeholder + reason in ``meta["excluded"]``),
     not rcgov's Clean Context Pack, which is a triage and omits without a trace.
 
@@ -253,14 +254,22 @@ def govern_context(
 
     try:
         from rcgov.pipeline import RunConfig, run as rcgov_run
-    except Exception as exc:  # noqa: BLE001 — rcgov not installed
+        # rebuild_records exists from rcgov 0.2.2. An older rcgov is never
+        # papered over with a local rebuild: that is how MG-2026-004 happened.
+        from rcgov.service import rebuild_records
+    except Exception as exc:  # noqa: BLE001
+        # Missing is one thing; installed but too old or broken is another, and
+        # the operator is told which.
+        missing = (isinstance(exc, ModuleNotFoundError)
+                   and (exc.name or "").split(".")[0] == "rcgov")
         if require_rcgov:
             return "", {
                 **base_meta,
                 "governed": False,
                 "status": "error",
                 "mode": "fail_closed",
-                "reason": "rcgov_unavailable",
+                "reason": "rcgov_unavailable" if missing else "rcgov_too_old_or_broken",
+                "rcgov_minimum": RCGOV_MINIMUM,
                 "error_type": type(exc).__name__,
                 "fail_closed": True,
                 "scan": scan_report,
@@ -269,10 +278,13 @@ def govern_context(
         return _join(kept), {
             **base_meta,
             "governed": True,
-            "status": "active",
+            "status": "active" if missing else "degraded",
             "mode": "builtin_guard_only",
-            "reason": "rcgov_optional_unavailable",
-            "rcgov_status": "unavailable",
+            "reason": ("rcgov_optional_unavailable" if missing
+                       else "rcgov_optional_too_old_or_broken"),
+            "rcgov_status": "unavailable" if missing else "error",
+            "rcgov_minimum": RCGOV_MINIMUM,
+            "error_type": type(exc).__name__,
             "scan": scan_report,
             "injection_dropped": dropped,
         }
@@ -314,7 +326,8 @@ def govern_context(
         parts, excluded, retained, admitted = [], [], [], 0
         for entry in manifest.get("inputs") or []:
             doc = Path(entry["source_path"]).read_text(encoding="utf-8")
-            rebuilt, ex, rt, adm = _rebuild_segments(doc, by_doc.get(entry["document_id"], []))
+            rebuilt, ex, rt, adm = _rebuild_segments(
+                doc, by_doc.get(entry["document_id"], []), rebuild_records)
             parts.append(rebuilt)
             excluded += ex
             retained += rt
@@ -365,64 +378,25 @@ def govern_context(
 # any real document (measured 2026-09-19 on 347 records: 1,508 flags, 0 confirmed).
 RETAIN_KINDS = frozenset({"high_entropy_token"})
 EXCLUDED_PLACEHOLDER = "_[segment excluded by RCGov — see governed['excluded']]_\n"
-_HEADING_LINE = re.compile(r"^#{1,6}\s+\S")
+RCGOV_MINIMUM = "0.2.2"
 
 
-def _hard_gated(rec) -> bool:
-    gr = rec.governed.gate_result if rec.governed is not None else None
-    return str(getattr(gr, "value", gr)) in ("block", "quarantine")
+def _rebuild_segments(doc: str, records, rebuild_records) -> tuple[str, list, list, int]:
+    """Rebuild ``doc`` from rcgov's records by source span — by rcgov itself.
 
-
-def _classify_record(rec) -> tuple[str, str]:
-    """``exclude`` | ``retain`` | ``keep``, from rcgov's structured findings only."""
-    secret_kinds = list(dict.fromkeys(f.kind for f in (rec.secret_findings or [])))
-    injection = list(dict.fromkeys(f.pattern_id for f in (rec.injection_findings or [])))
-    confirmed = [k for k in secret_kinds if k not in RETAIN_KINDS]
-    if confirmed or injection:
-        return "exclude", ", ".join(confirmed + injection)
-    if secret_kinds:
-        return "retain", ", ".join(secret_kinds)
-    if _hard_gated(rec):
-        notes = rec.governed.notes
-        reason = ("; ".join(map(str, notes)) if isinstance(notes, (list, tuple)) else str(notes)) if notes else "gated"
-        return "exclude", reason
-    return "keep", ""
-
-
-def _rebuild_segments(doc: str, records) -> tuple[str, list, list, int]:
-    """Rebuild ``doc`` from rcgov's records by source span.
-
-    Kept segments are copied byte-for-byte; excluded ones keep a heading line and
-    get a placeholder. Spans are verified against the record's own text — a
-    mismatch raises rather than guesses. v0.8.2 and earlier returned rcgov's
-    Clean Context Pack here, which is a triage by authority and priority: a
-    segment routed to review was dropped with no trace (advisory MG-2026-003).
+    0.8.3 carried its own copy of this loop. The copy kept the first line of an
+    excised segment whenever it looked like a heading, and a line such as
+    ``# AWS_SECRET_ACCESS_KEY=…`` looks like one: the secret that caused the
+    excision was handed to the model as the segment's heading and repeated in
+    ``governed["excluded"][].heading`` (advisory MG-2026-004). The rebuild is
+    now ``rcgov.service.rebuild_records`` (rcgov 0.2.2), so there is one
+    implementation to fix.
     """
-    ordered = sorted(records, key=lambda r: r.segment.source_span.start)
-    out, excluded, retained, admitted = [], [], [], 0
-    cursor, n = 0, len(doc)
-    for rec in ordered:
-        sp = rec.segment.source_span
-        s, e = sp.start, sp.end
-        if not (0 <= cursor <= s <= e <= n) or doc[s:e] != rec.text:
-            raise RuntimeError(f"span verification failed for {rec.segment.segment_id} [{s}:{e}] of {n}")
-        klass, reason = _classify_record(rec)
-        entry = {"segment": rec.segment.segment_id,
-                 "heading": " / ".join(rec.segment.heading_path or ()), "reason": reason}
-        out.append(doc[cursor:s])
-        if klass == "exclude":
-            first, _nl, _rest = rec.text.partition("\n")
-            out.append((first + "\n\n" + EXCLUDED_PLACEHOLDER) if _HEADING_LINE.match(first)
-                       else EXCLUDED_PLACEHOLDER)
-            excluded.append(entry)
-        else:
-            out.append(doc[s:e])
-            admitted += 1
-            if klass == "retain":
-                retained.append(entry)
-        cursor = e
-    out.append(doc[cursor:])
-    return "".join(out), excluded, retained, admitted
+    text, excluded, retained, admitted = rebuild_records(
+        doc, records, retain_kinds=RETAIN_KINDS, placeholder=EXCLUDED_PLACEHOLDER)
+    strip = lambda item: {"segment": item["segment"], "heading": item["heading"],  # noqa: E731
+                          "reason": item["reason"]}
+    return text, [strip(i) for i in excluded], [strip(i) for i in retained], admitted
 
 
 def compose_user_text(text: str, safe_context: str) -> str:
