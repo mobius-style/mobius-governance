@@ -198,9 +198,10 @@ private key headers, and relies on rcgov for them. Without rcgov installed —
 or, in optional mode, with an rcgov older than 0.2.2 — those pass. If you ran
 0.8.3 with rcgov 0.2.0 or 0.2.1 and `require_rcgov=False`, upgrading only this
 package **loses** rcgov's body-level exclusions until rcgov is upgraded too;
-the decision reads `degraded`. Upgrade both. The guard's full scan costs
-about 40–70 µs per byte in 0.8.3 and 0.8.4 alike, so a segment near the
-2,000,000-byte limit takes over a minute. rcgov 0.2.1's README lists the forms
+the decision reads `degraded`. Upgrade both. The guard's full scan is slow
+and was before: measured on 0.8.3, a 1.9 MB segment takes 60–104 s, growing
+linearly with size; at 100 KB and 400 KB 0.8.4 is within 2 % of 0.8.3, and
+the new rule adds at most 0.24 s at 1.9 MB. rcgov 0.2.1's README lists the forms
 its own patterns miss (short passwords, passwords with symbols, a key with no
 label); they pass here too.
 

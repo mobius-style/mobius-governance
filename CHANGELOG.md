@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `SECURITY.md`, MG-2026-004: the scan-time sentence said "40–70 µs per byte";
+  the measured figure is 60–104 s for 1.9 MB (about 31–55 µs per byte).
 - `tools/public_release_check.py` accepts a top-level `.github` directory.
   `.github/FUNDING.yml` was added to `main` on 2026-09-27 and made the check
   fail there; the tag `v0.8.4` does not contain it and verifies as tagged.
