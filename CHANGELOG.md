@@ -10,11 +10,16 @@ excision of its own segment.** See `SECURITY.md`.
   line of an excised segment as its heading, and `# HF_TOKEN=…` is a heading to
   the segmenter: the secret came back above the placeholder and in
   `governed["excluded"][].heading`.
-- An rcgov older than 0.2.2 is treated as rcgov not installed
-  (`reason="rcgov_unavailable"`; fail-closed under `require_rcgov=True`).
+- An rcgov older than 0.2.2, or one that fails to import, is reported as such:
+  `reason="rcgov_too_old_or_broken"` (fail-closed under `require_rcgov=True`),
+  or `status="degraded"` with `reason="rcgov_optional_too_old_or_broken"` in
+  optional mode. Both carry `rcgov_minimum`. A missing rcgov keeps its reasons.
+- The heading line of an excised segment is removed when it carries any
+  finding, including a path or long token; a heading that is itself an
+  injection phrase is removed.
 - Built-in guard policy `2026-09-29.1`: new secret rule
   `aws_secret_access_key`. The guard had no rule for AWS secret access keys.
-- The `govern` extra pins `rcgov` to the tag `v0.2.2`.
+- The `govern` extra pins `rcgov` to the tag `v0.2.3` (0.2.2 is the minimum).
 - Tests: comment-line secret, clean heading kept, old rcgov refused, the AWS
   rule on five label forms and three benign texts. The comment-line test fails
   on the 0.8.3 `core.py`.

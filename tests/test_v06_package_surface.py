@@ -18,7 +18,7 @@ class V07PackageSurfaceTests(unittest.TestCase):
     def test_module_and_distribution_metadata_are_v082(self) -> None:
         # The package version is 0.8.0 (action-gate security fix); the detector
         # engine is deliberately still structural_v0_7 because the scanner and
-        # its 130-rule policy are unchanged by that fix.
+        # its policy rules are unchanged by that fix (0.8.4 adds one secret rule).
         project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         self.assertEqual(mobius_governance.__version__, "0.8.4")
         self.assertEqual(project["project"]["version"], "0.8.4")

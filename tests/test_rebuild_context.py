@@ -67,8 +67,6 @@ class RebuildContextTests(unittest.TestCase):
         self.assertIn(FACT, d.prompt)
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 # 0.8.4 — the rebuild is rcgov's own (MG-2026-004). TEST FIXTURE values, not credentials.
@@ -107,10 +105,22 @@ class HeadingLineTests(unittest.TestCase):
         with mock.patch.object(service, "rebuild_records", create=True):
             delattr(service, "rebuild_records")
             text, meta = govern_context([FACT], "Explain", guard_engine=self.engine, require_rcgov=True)
-            self.assertEqual((text, meta["reason"], meta["fail_closed"]), ("", "rcgov_unavailable", True))
+            self.assertEqual((text, meta["reason"], meta["fail_closed"]),
+                             ("", "rcgov_too_old_or_broken", True))
+            self.assertEqual(meta["rcgov_minimum"], "0.2.2")
             text, meta = govern_context([FACT], "Explain", guard_engine=self.engine, require_rcgov=False)
             self.assertEqual(meta["mode"], "builtin_guard_only")
-            self.assertEqual(meta["rcgov_status"], "unavailable")
+            self.assertEqual((meta["status"], meta["rcgov_status"]), ("degraded", "error"))
+            self.assertEqual(meta["reason"], "rcgov_optional_too_old_or_broken")
+
+    def test_missing_rcgov_keeps_its_own_reason(self) -> None:
+        import sys
+        from unittest import mock
+        with mock.patch.dict(sys.modules, {"rcgov.pipeline": None}):
+            text, meta = govern_context([FACT], "Explain", guard_engine=self.engine, require_rcgov=True)
+            self.assertEqual((text, meta["reason"]), ("", "rcgov_unavailable"))
+            text, meta = govern_context([FACT], "Explain", guard_engine=self.engine, require_rcgov=False)
+            self.assertEqual((meta["status"], meta["reason"]), ("active", "rcgov_optional_unavailable"))
 
 
 class BuiltinAwsSecretRuleTests(unittest.TestCase):
@@ -133,3 +143,7 @@ class BuiltinAwsSecretRuleTests(unittest.TestCase):
                      "Rotate the secret access key every ninety days and store it in the vault.",
                      "The secret key fingerprint is 0123456789012345678901234567890123456789."):
             self.assertEqual(self.engine.scan(text).decision, "admit", text)
+
+
+if __name__ == "__main__":
+    unittest.main()

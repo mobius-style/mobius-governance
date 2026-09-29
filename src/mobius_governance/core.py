@@ -254,17 +254,22 @@ def govern_context(
 
     try:
         from rcgov.pipeline import RunConfig, run as rcgov_run
-        # rebuild_records exists from rcgov 0.2.2. An older rcgov is treated as
-        # no rcgov: falling back to a local rebuild is how MG-2026-004 happened.
+        # rebuild_records exists from rcgov 0.2.2. An older rcgov is never
+        # papered over with a local rebuild: that is how MG-2026-004 happened.
         from rcgov.service import rebuild_records
-    except Exception as exc:  # noqa: BLE001 — rcgov not installed, or older than RCGOV_MINIMUM
+    except Exception as exc:  # noqa: BLE001
+        # Missing is one thing; installed but too old or broken is another, and
+        # the operator is told which.
+        missing = (isinstance(exc, ModuleNotFoundError)
+                   and (exc.name or "").split(".")[0] == "rcgov")
         if require_rcgov:
             return "", {
                 **base_meta,
                 "governed": False,
                 "status": "error",
                 "mode": "fail_closed",
-                "reason": "rcgov_unavailable",
+                "reason": "rcgov_unavailable" if missing else "rcgov_too_old_or_broken",
+                "rcgov_minimum": RCGOV_MINIMUM,
                 "error_type": type(exc).__name__,
                 "fail_closed": True,
                 "scan": scan_report,
@@ -273,10 +278,13 @@ def govern_context(
         return _join(kept), {
             **base_meta,
             "governed": True,
-            "status": "active",
+            "status": "active" if missing else "degraded",
             "mode": "builtin_guard_only",
-            "reason": "rcgov_optional_unavailable",
-            "rcgov_status": "unavailable",
+            "reason": ("rcgov_optional_unavailable" if missing
+                       else "rcgov_optional_too_old_or_broken"),
+            "rcgov_status": "unavailable" if missing else "error",
+            "rcgov_minimum": RCGOV_MINIMUM,
+            "error_type": type(exc).__name__,
             "scan": scan_report,
             "injection_dropped": dropped,
         }

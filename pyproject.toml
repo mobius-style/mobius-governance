@@ -22,7 +22,7 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-govern = ["rcgov @ git+https://github.com/mobius-style/rcgov.git@v0.2.2"]
+govern = ["rcgov @ git+https://github.com/mobius-style/rcgov.git@v0.2.3"]
 serve = ["fastapi>=0.110", "uvicorn>=0.29"]
 
 [project.scripts]
