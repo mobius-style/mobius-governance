@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `tools/public_release_check.py` accepts a top-level `.github` directory.
+  `.github/FUNDING.yml` was added to `main` on 2026-09-27 and made the check
+  fail there; the tag `v0.8.4` does not contain it and verifies as tagged.
+
 ## 0.8.4-alpha — 2026-09-29
 
 **Security fix (advisory MG-2026-004): a secret on a `#` line survived the

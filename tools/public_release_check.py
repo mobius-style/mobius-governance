@@ -32,7 +32,8 @@ CORE_TOP_LEVEL = {
     "tests",
     "tools",
 }
-OPTIONAL_TOP_LEVEL = {MANIFEST_NAME, SIDECAR_NAME}
+# .github holds repository settings (FUNDING.yml); it is scanned and listed like any other file.
+OPTIONAL_TOP_LEVEL = {MANIFEST_NAME, SIDECAR_NAME, ".github"}
 SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", ".venv", "build", "dist"}
 TEXT_EXEMPT_MARKERS = (
     b"FAKE",
