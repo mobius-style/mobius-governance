@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.8.4-alpha — 2026-09-29
+
+**Security fix (advisory MG-2026-004): a secret on a `#` line survived the
+excision of its own segment.** See `SECURITY.md`.
+
+- The rebuild of retrieved context is now `rcgov.service.rebuild_records`
+  (rcgov 0.2.2); the local copy of the loop is deleted. The copy kept the first
+  line of an excised segment as its heading, and `# HF_TOKEN=…` is a heading to
+  the segmenter: the secret came back above the placeholder and in
+  `governed["excluded"][].heading`.
+- An rcgov older than 0.2.2 is treated as rcgov not installed
+  (`reason="rcgov_unavailable"`; fail-closed under `require_rcgov=True`).
+- Built-in guard policy `2026-09-29.1`: new secret rule
+  `aws_secret_access_key`. The guard had no rule for AWS secret access keys.
+- The `govern` extra pins `rcgov` to the tag `v0.2.2`.
+- Tests: comment-line secret, clean heading kept, old rcgov refused, the AWS
+  rule on five label forms and three benign texts. The comment-line test fails
+  on the 0.8.3 `core.py`.
+- `tools/public_release_check.py --verify-manifest` failed on the 0.8.3 tree
+  (a test fixture shaped like a token carried no fixture marker), so the 0.8.3
+  manifest was published without a passing check. The fixture now carries the
+  marker and the check passes.
+- Unchanged: the shape of `governed["excluded"]` and `["retained_flagged"]`
+  entries (`segment`, `heading`, `reason`), the guard's other rules, the
+  fail-closed semantics.
+
 ## 0.8.3-alpha — 2026-09-20
 
 **Security fix (advisory MG-2026-003): retrieved context was read off rcgov's

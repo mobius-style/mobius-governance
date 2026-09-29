@@ -19,7 +19,7 @@ EN = ("The canonical weekly runbook is RUNBOOK.md, last revised on 2026-09-04. T
 FACT = "The GIL is a mutex in CPython that lets one thread run bytecode at a time."
 # A secret shape the mandatory built-in guard lets through (AKIA keys it drops itself,
 # before rcgov ever sees them) so that rcgov's exclusion path is what gets exercised.
-SECRET = "export HF_TOKEN=hf_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 && curl -H 'Authorization: Bearer' https://example.invalid"
+SECRET = "export HF_TOKEN=hf_TESTFIXTUREABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 && curl -H 'Authorization: Bearer' https://example.invalid"
 SECRET_MARK = SECRET.split("=", 1)[1].split()[0][:12]
 
 
@@ -69,3 +69,67 @@ class RebuildContextTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# 0.8.4 — the rebuild is rcgov's own (MG-2026-004). TEST FIXTURE values, not credentials.
+COMMENT_SECRET = "hf_TESTaBcDeFgHiJkLmNoPqRsTuVwXyZaBcDeFgH"
+COMMENT_BLOB = ("Deploy notes for the staging box.\n\n"
+                f"# HF_TOKEN {COMMENT_SECRET}\nREGION=us-east-1\n\n"
+                "## Plan\n\nThe release ships on Friday.\n")
+
+
+@unittest.skipUnless(HAVE_RCGOV, "rcgov not installed")
+class HeadingLineTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.engine = GuardEngine.from_path()
+
+    def test_secret_on_a_comment_line_is_not_kept_as_the_heading(self) -> None:
+        """0.8.3 excised the segment and kept its first line — the line with the secret."""
+        text, meta = govern_context([COMMENT_BLOB], "Summarize", guard_engine=self.engine, require_rcgov=True)
+        self.assertEqual(meta["rcgov_status"], "active")
+        self.assertNotIn(COMMENT_SECRET, text)
+        self.assertNotIn(COMMENT_SECRET, repr(meta))
+        self.assertIn("The release ships on Friday.", text)
+        self.assertIn("Deploy notes for the staging box.", text)
+        self.assertTrue(any("huggingface_token" in e["reason"] for e in meta["excluded"]))
+
+    def test_clean_heading_of_an_excised_segment_is_kept(self) -> None:
+        blob = f"Intro line.\n\n## Access\n\nuse {COMMENT_SECRET} here\n\n## Plan\n\nShip.\n"
+        text, meta = govern_context([blob], "Summarize", guard_engine=self.engine, require_rcgov=True)
+        self.assertIn("## Access\n", text)
+        self.assertNotIn(COMMENT_SECRET, text)
+        self.assertEqual(set(meta["excluded"][0]), {"segment", "heading", "reason"})
+
+    def test_rcgov_without_rebuild_records_is_treated_as_unavailable(self) -> None:
+        """An rcgov older than 0.2.2 must not be papered over with a local rebuild."""
+        from unittest import mock
+        import rcgov.service as service
+        with mock.patch.object(service, "rebuild_records", create=True):
+            delattr(service, "rebuild_records")
+            text, meta = govern_context([FACT], "Explain", guard_engine=self.engine, require_rcgov=True)
+            self.assertEqual((text, meta["reason"], meta["fail_closed"]), ("", "rcgov_unavailable", True))
+            text, meta = govern_context([FACT], "Explain", guard_engine=self.engine, require_rcgov=False)
+            self.assertEqual(meta["mode"], "builtin_guard_only")
+            self.assertEqual(meta["rcgov_status"], "unavailable")
+
+
+class BuiltinAwsSecretRuleTests(unittest.TestCase):
+    """The mandatory guard had no rule for AWS secret access keys."""
+
+    AWS_EXAMPLE = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"   # AWS's documentation EXAMPLE key
+
+    def setUp(self) -> None:
+        self.engine = GuardEngine.from_path()
+
+    def test_labelled_aws_secret_key_is_dropped(self) -> None:
+        for form in ("aws_secret_access_key = {}", "AWS_SECRET_ACCESS_KEY={}", "Secret access key: {}",
+                     "# old: aws_secret_access_key = {}", '"SecretAccessKey": "{}"'):
+            decision = self.engine.scan(form.format(self.AWS_EXAMPLE))
+            self.assertEqual(decision.decision, "drop", form)
+            self.assertIn("aws_secret_access_key", {h.rule_id for h in decision.hits}, form)
+
+    def test_hashes_and_prose_about_secret_keys_are_admitted(self) -> None:
+        for text in ("The secret key was rotated in 3f2a9c1e7b4d8a6f0e5c2b9d1a7f4e8c6b3d0a59.",
+                     "Rotate the secret access key every ninety days and store it in the vault.",
+                     "The secret key fingerprint is 0123456789012345678901234567890123456789."):
+            self.assertEqual(self.engine.scan(text).decision, "admit", text)

@@ -131,6 +131,64 @@ to "segments admitted". The same defect shipped in three sibling artifacts
 wrappers) and is fixed there; `rcgov` 0.2.0 exposes `rebuild_bytes()` so the
 correct primitive exists upstream.
 
+## Advisory MG-2026-004 — a secret on a `#` line survived the excision of its own segment (fixed in 0.8.4)
+
+**Affected:** 0.8.3, whenever rcgov was installed and retrieved context was
+supplied. **Fixed:** 0.8.4 with rcgov 0.2.2. **Severity:** high for the inputs
+it applies to — a credential reached the model and the metadata.
+
+0.8.3 rebuilt the context from rcgov's records with its own copy of the rebuild
+loop. When a segment was excised, the copy kept the segment's first line if it
+looked like a Markdown heading. A commented line in a `.env` file or a shell
+script — `# HF_TOKEN=…`, `# old: aws_secret_access_key = …` — looks like one.
+So rcgov detected the secret, the segment was replaced by the placeholder, and
+the line that held the secret was written back above the placeholder and
+repeated in `governed["excluded"][].heading`. The decision said the segment was
+excluded. It was, except for the secret.
+
+This applied to every secret kind rcgov detects and the mandatory built-in
+guard does not drop first. The guard drops a whole blob on its own rules
+(private key headers, `AKIA`/`ASIA` ids, `gh?_` tokens, bearer tokens,
+`api_key` / `access_token` / `secret_key` / password assignments), so those
+never reached the rebuild; Slack tokens, `token=` assignments and every
+prefixed vendor token did. The same copy of the loop shipped in three sibling
+artifacts and in rcgov's own `rebuild_bytes`; rcgov 0.2.1 has the incident
+report.
+
+A second, older gap is closed with it: **the built-in guard had no rule for AWS
+secret access keys.** In `aws_secret_access_key = …` the word `secret` is
+followed by `_access_key`, so the `secret_key` assignment rule did not match,
+and the 40-character value has no prefix. Without rcgov the key was admitted;
+with rcgov 0.2.0 it was flagged only as a high-entropy token, which is kept.
+
+0.8.4:
+
+- The rebuild is `rcgov.service.rebuild_records` (rcgov 0.2.2). The local copy
+  is deleted. An rcgov without that function is treated as rcgov not installed
+  — `require_rcgov=True` fails closed with `reason="rcgov_unavailable"` —
+  rather than papered over with a local rebuild.
+- Policy `2026-09-29.1` adds the rule `aws_secret_access_key`. The guard
+  case-folds its input, so the rule cannot ask for mixed case; it asks for 40
+  characters of the base64 alphabet with a digit and a character that is not a
+  hexadecimal digit, within 24 characters of the label. A 40-digit hex hash
+  after the words "secret key" is admitted.
+
+Measured before release: with the 0.8.3 `core.py` and rcgov 0.2.2, the new
+test `test_secret_on_a_comment_line_is_not_kept_as_the_heading` fails — the
+token is in the text; with 0.8.4 it is absent from the text and from the
+metadata, and the neighbouring paragraphs are kept.
+
+**What is not fixed.** The guard's rules are still a short list: it has no
+rule for `sk-`, `hf_`, GitLab, Google or Stripe keys, and relies on rcgov for
+them. Without rcgov installed those pass. rcgov 0.2.1's README lists the forms
+its own patterns miss (short passwords, passwords with symbols, a key with no
+label); they pass here too.
+
+**Action required:** upgrade to 0.8.4 and to rcgov 0.2.2
+(`pip install "mobius-governance[govern]"` pins it). If you stored decisions
+from 0.8.3, treat `governed["excluded"][].heading` in them as possibly holding
+the secret that caused the exclusion. If you pinned the policy hash, it changed.
+
 ## Supported release
 
 Version 0.8.x is an alpha implementation. Security fixes may change policy

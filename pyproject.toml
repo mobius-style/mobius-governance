@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mobius-governance"
-version = "0.8.3"
+version = "0.8.4"
 description = "Bounded context scanning and action mediation for LLM applications"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -22,7 +22,7 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-govern = ["rcgov @ git+https://github.com/mobius-style/rcgov.git"]
+govern = ["rcgov @ git+https://github.com/mobius-style/rcgov.git@v0.2.2"]
 serve = ["fastapi>=0.110", "uvicorn>=0.29"]
 
 [project.scripts]
